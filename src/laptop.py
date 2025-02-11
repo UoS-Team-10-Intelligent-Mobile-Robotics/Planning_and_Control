@@ -21,7 +21,7 @@ class LaptopPilot:
         # network for sensed pose
         aruco_params = {
             "port": 50000,  # Port to listen to (DO NOT CHANGE)
-            "marker_id": 20,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
+            "marker_id": 25,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
         }
         self.robot_ip = "192.168.90.1"
         
@@ -86,6 +86,10 @@ class LaptopPilot:
                     
     def true_wheel_speeds_callback(self, msg):
         print("Received sensed wheel speeds: R=", msg.vector.x,", L=", msg.vector.y)
+
+        #update wheel rates
+        self.measured_wheelrate_right = msg.vector.x
+        self.measured_wheelrate_left = msg.vector.y
         self.datalog.log(msg, topic_name="/true_wheel_speeds")
 
     def lidar_callback(self, msg):
@@ -96,6 +100,12 @@ class LaptopPilot:
             self.sim_init = False     
 
         msg.header.stamp += self.sim_time_offset
+        
+        self.lidar_timestamp_s = msg.header.stamp
+        self.lidar_data = np.zeros((len(msg.ranges.size), 2))
+        self.lidar_data[:, 0] = msg.ranges
+        self.lidar_data[:, 1] = msg.angles
+
         self.datalog.log(msg, topic_name="/lidar")
 
     def groundtruth_callback(self, msg):
