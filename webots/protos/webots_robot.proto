@@ -1,0 +1,275 @@
+#VRML_SIM R2023b utf8
+# license: Apache License 2.0
+# license url: http://www.apache.org/licenses/LICENSE-2.0
+# This is a proto file for Webots for the pitop
+# Extracted from: /home/miquel/git/uos_feeg6043_build/urdf/pitop.urdf
+
+PROTO webots_robot [
+  field  SFVec3f     translation     0 0 0
+  field  SFRotation  rotation        0 0 1 0
+  field  SFString    name            "webots_robot"  # Is `Robot.name`.
+  field  SFString    controller      "webots_robot"   # Is `Robot.controller`.
+  field  MFString    controllerArgs  []       # Is `Robot.controllerArgs`.
+  field  SFString    customData      ""       # Is `Robot.customData`.
+  field  SFBool      supervisor      FALSE    # Is `Robot.supervisor`.
+  field  SFBool      synchronization TRUE     # Is `Robot.synchronization`.
+  field  SFBool      selfCollision   FALSE    # Is `Robot.selfCollision`.
+]
+{
+  Robot {
+    translation IS translation
+    rotation IS rotation
+    controller IS controller
+    controllerArgs IS controllerArgs
+    customData IS customData
+    supervisor IS supervisor
+    synchronization IS synchronization
+    selfCollision IS selfCollision
+    children [
+      DEF BodyPlate Transform {
+        translation 0.000000 0.000000 -0.002500
+        children [
+          Shape {
+            appearance DEF blue PBRAppearance {
+              baseColor 0.500000 0.500000 0.500000
+              roughness 1.000000
+              metalness 0
+            }
+            geometry Box {
+               size 0.240000 0.110000 0.005000
+            }
+          }
+        ]
+      }
+      DEF BodyPiTop Transform {
+        translation -0.070000 0.000000 0.025000
+        children [
+          Shape {
+            appearance DEF DarkGreyColour PBRAppearance {
+              baseColor 0.2500000 0.2500000 0.2500000
+              roughness 1.000000
+              metalness 0
+            }
+            geometry Box {
+               size 0.130000 0.100000 0.050000
+            }
+          }
+        ]
+      }
+      DEF LidarBase Transform {
+        translation 0.050000 0.000000 0.015000
+        children [
+          Shape {
+            appearance USE DarkGreyColour
+            geometry Box {
+               size 0.095000 0.070000 0.030000
+            }
+          }
+        ]
+      }
+      DEF LidarHead Transform {
+        translation 0.040000 0.000000 0.040000
+        children [
+          Shape {
+            appearance USE DarkGreyColour
+            geometry Cylinder {
+              radius 0.035
+              height 0.02
+            }
+          }
+        ]
+      }
+      DEF RightMotor Transform {
+        translation -0.060000 0.035000 -0.025000
+        children [
+          Shape {
+            appearance USE DarkGreyColour
+            geometry Box {
+               size 0.065000 0.050000 0.040000
+            }
+          }
+        ]
+      }
+      DEF LeftMotor Transform {
+        translation -0.060000 -0.035000 -0.025000
+        children [
+          Shape {
+            appearance USE DarkGreyColour
+            geometry Box {
+               size 0.065000 0.050000 0.040000
+            }
+          }
+        ]
+      }
+      DEF CasterMount Transform {
+        translation 0.105000 0.000000 -0.035000
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.500000 0.500000 0.500000
+              roughness 1.000000
+              metalness 0
+            }
+            geometry Box {
+               size 0.007000 0.007000 0.065000
+            }
+          }
+        ]
+      }
+      DEF CASTER_JOINT BallJoint {
+        jointParameters BallJointParameters {
+          anchor 0.105000 0.000000 -0.062000
+        }
+        endPoint Solid {
+          translation 0.105000 0.000000 -0.062000
+          children [
+            Shape {
+              appearance PBRAppearance {
+                baseColor 0.500000 0.500000 0.500000
+                roughness 1.000000
+                metalness 0
+              }
+              geometry DEF CASTER_SPHERE Sphere {
+                radius 0.012
+                subdivision 2
+              }
+            }
+          ]
+          boundingObject USE CASTER_SPHERE
+          physics Physics {
+          }
+        }
+      }
+
+      DEF RIGHT_JOINT HingeJoint {
+        jointParameters HingeJointParameters {
+          axis 0 1 0
+          anchor -0.08 -0.08 -0.037
+        }
+        device [
+          RotationalMotor {
+            name "right wheel motor"
+            consumptionFactor -0.001
+            maxVelocity 6.67
+          }
+          PositionSensor {
+            name "right wheel sensor"
+            resolution 0.00628
+          }
+        ]
+        endPoint Solid {
+          translation -0.08 -0.08 -0.037
+          rotation 0 -1 0 1.570796
+          children [
+            DEF RIGHT_WHEEL Transform {
+              rotation 1 0 0 -1.5708003061004252
+              children [
+                DEF WHEEL_SHAPE Group {
+                  children [
+                    Shape {
+                      appearance PBRAppearance {
+                        baseColor 0 0 0
+                        roughness 1
+                        metalness 0
+                      }
+                      geometry Cylinder {
+                        radius 0.037
+                        height 0.028
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+          name "right wheel"
+          boundingObject Transform {
+            rotation 1 0 0 -1.570796
+            children [
+              Cylinder {
+                height 0.018
+                radius 0.037
+              }
+            ]
+          }
+          physics Physics {
+            density -1
+            mass 0.028499
+            centerOfMass [
+              0 0 0
+            ]
+          }
+        }
+      }
+
+      DEF LEFT_JOINT HingeJoint {
+        jointParameters HingeJointParameters {
+          axis 0 1 0
+          anchor -0.08 0.08 -0.037
+        }
+        device [
+          RotationalMotor {
+            name "left wheel motor"
+            consumptionFactor -0.001
+            maxVelocity 6.67
+          }
+          PositionSensor {
+            name "left wheel sensor"
+            resolution 0.00628
+          }
+        ]
+        endPoint Solid {
+          translation -0.08 0.08 -0.037
+          rotation 0.707105 0 0.707109 -3.141588
+          children [
+            DEF LEFT_WHEEL Transform {
+              rotation 1 0 0 -1.5708003061004252
+              children [
+                USE WHEEL_SHAPE
+              ]
+            }
+          ]
+          name "left wheel"
+          boundingObject Transform {
+            rotation 1 0 0 -1.570796
+            children [
+              Cylinder {
+                height 0.018
+                radius 0.037
+              }
+            ]
+          }
+          physics Physics {
+            density -1
+            mass 0.028499
+            centerOfMass [
+              0 0 0
+            ]
+          }
+        }
+      }
+      DEF LIDAR Lidar {
+        translation 0.04 0 0.04
+        horizontalResolution 120
+        fieldOfView 2.0944
+        numberOfLayers 1
+        near 0.05
+        minRange 0.05
+        maxRange 1.0
+        defaultFrequency 1.0
+      }
+      Compass {
+      }
+      GPS {
+      }
+    ]
+    physics Physics {
+      density -1
+      mass 1.5
+      centerOfMass [
+        0 0 0.15
+      ]
+    }
+    name IS name
+  }
+}

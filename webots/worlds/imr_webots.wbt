@@ -1,0 +1,69 @@
+#VRML_SIM R2023b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/cb1af9e3bbe43a138b70fe67552cfcc8c7fe1e11/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/cb1af9e3bbe43a138b70fe67552cfcc8c7fe1e11/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/cb1af9e3bbe43a138b70fe67552cfcc8c7fe1e11/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "../protos/webots_robot.proto"
+
+WorldInfo {
+  info [
+    "Intelligent Mobile Robotics simulation using webots."
+  ]
+  title "IMR Webots"
+  basicTimeStep 8
+  lineScale 0.15
+}
+Viewpoint {
+  fieldOfView 1.5
+  orientation 0 -1 0 -0.8582991616720292
+  position -1 -1 2
+}
+TexturedBackground {
+  skybox FALSE
+}
+TexturedBackgroundLight {
+  castShadows FALSE
+}
+RectangleArena {
+  translation 1 -1 0
+  floorSize 2 2
+  floorTileSize 2 2
+  floorAppearance Appearance {
+    material Material {
+      diffuseColor 1 1 1
+    }
+  }
+  wallThickness 0.05
+  wallHeight 0.2
+}
+DEF CYLINDER_OBSTACLE Solid {
+  translation 1 -1 0.15
+  children [
+    DEF CYLINDER_SHAPE Shape {
+      appearance PBRAppearance {
+        baseColor 0.101961 0.372549 0.705882
+        roughness 0.16827074099999995
+        metalness 0
+      }
+      geometry Cylinder {
+        height 0.2
+        radius 0.15
+        subdivision 20
+      }
+    }
+  ]
+  name "cylinder"
+  boundingObject USE CYLINDER_SHAPE
+}
+webots_robot {
+  hidden position_0_0 -5.839821571555703
+  hidden position2_0_0 0.16219943240389798
+  hidden position3_0_0 0.17834347163148614
+  hidden position_0_1 2.057687747387592
+  hidden position_0_2 2.1079445492448787
+  hidden rotation_1 -0.709911521696386 -0.5710799275525666 -0.4121812073703468 5.6795597080196885
+  hidden rotation_2 0 1 0 0.48689174738759233
+  hidden rotation_3 -0.9641509963857496 2.0228988831108466e-06 0.26535420886858796 3.1415903541510795
+  translation 0.30006791591262844 -0.2999999991804274 0.07383589158636242
+  rotation -1.142118617785172e-05 0.9999999999332324 1.7582952741897195e-06 0.0009182620430999692
+}
