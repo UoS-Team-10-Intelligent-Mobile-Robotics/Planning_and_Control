@@ -55,7 +55,7 @@ setup(
         "numpy==1.26.4",
         "matplotlib",
         "importlib-metadata==4.13.0",
-        "setuptools==69.0.3",
+        "setuptools==70.0.0",
         "pyserial==3.5",
         "pyzmq==25.1.1",
         "pglive==0.7.6",
