@@ -41,8 +41,9 @@ class LaptopPilot:
 
         ############# INITIALISE ATTRIBUTES ##########        
         # path
-        self.northings_path = []
-        self.eastings_path = []        
+        self.northings_path = [0, -3, -3, 0, 0]
+        self.eastings_path = [0, 0, 3, 3, 0]  
+        self.relative_path = True #False if you want it to be absolute
 
         # model pose
         self.est_pose_northings_m = None
