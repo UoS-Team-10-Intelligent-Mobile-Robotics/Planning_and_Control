@@ -41,8 +41,9 @@ class LaptopPilot:
 
         ############# INITIALISE ATTRIBUTES ##########        
         # path
-        self.northings_path = []
-        self.eastings_path = []  
+        self.northings_path = [0, -3, -3, 0, 0]
+        self.eastings_path = [0, 0, 3, 3, 0]  
+        self.relative_path = True #False if you want it to be absolute
        
 
         # model pose
@@ -186,7 +187,21 @@ class LaptopPilot:
             self.measured_pose_eastings_m = msg.pose.position.y
             _, _, self.measured_pose_yaw_rad = msg.pose.orientation.to_euler()        
             self.measured_pose_yaw_rad = self.measured_pose_yaw_rad % (np.pi*2) # manage angle wrapping
+def generate_trajectory(self):
+    # pick waypoints as current pose relative or absolute northings and eastings
+    if self.relative_path == True:
+        for i in range(len(??)):
+            self.northings_path[i] += ?? #offset by current northings
+            self.eastings_path[i] += ?? #offset by current eastings
 
+        # convert path to matrix and create a trajectory class instance
+        C = l2m([??, ??])        
+        self.path = TrajectoryGenerate(x_path, y_path)        
+        
+        # set trajectory variables (velocity, acceleration and turning arc radius)
+        self.path.path_to_trajectory(v, a) #velocity and acceleration
+        self.path.turning_arcs(radius) #turning radius
+        self.path.wp_id=0 #initialises the next waypoint
             # logs the data            
             self.datalog.log(msg, topic_name="/aruco")
 
