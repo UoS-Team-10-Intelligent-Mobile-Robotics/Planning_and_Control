@@ -1,0 +1,6 @@
+.DS_Store
+*.ini
+*.txt
+*.imr_webots.wbproj
+PKG-INFO
+*.cpython-313*
