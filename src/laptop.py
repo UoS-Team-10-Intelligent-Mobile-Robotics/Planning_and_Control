@@ -14,6 +14,8 @@ from zeroros import Subscriber, Publisher
 from zeroros.messages import LaserScan, Vector3Stamped, Pose, PoseStamped, Header, Quaternion
 from zeroros.datalogger import DataLogger
 from zeroros.rate import Rate
+from model_feeg6043 import TrajectoryGenerate
+from math_feeg6043 import 12m
 # add more libraries here
 
 class LaptopPilot:
