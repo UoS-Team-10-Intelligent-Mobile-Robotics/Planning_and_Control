@@ -7,7 +7,7 @@ See LICENSE.md file in the project root for full license information.
 """
 import numpy as np
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 from drivers.aruco_udp_driver import ArUcoUDPDriver
 from zeroros import Subscriber, Publisher
@@ -24,7 +24,9 @@ from model_feeg6043 import feedback_control
 from math_feeg6043 import Inverse, HomogeneousTransformation
 
 class LaptopPilot:
+    # def __init__(self, simulation, self.kg, self,kn, self.tau_s):
     def __init__(self, simulation):
+
         # network for sensed pose
         aruco_params = {
             "port": 50000,  # Port to listen to (DO NOT CHANGE)
@@ -47,37 +49,40 @@ class LaptopPilot:
         ############# INITIALISE ATTRIBUTES ##########       
 
         self.velocity = 0.1  # velocity in m/s
-        self.acceleration = 0.1/3  # acceleration in m/s^2
-        self.turning_radius = 0.375  # turning radius in meters
+        self.acceleration = 0.1/3 # acceleration in m/s^2
+        self.turning_radius = 0.45  # turning radius in meters
+        # self.turning_radius = 0.495  # turning radius in meters
 
         self.t_prev = 0  # previous time
         self.t = 0 #elapsed time
 
         # modelling parameters
-        wheel_distance = 0.6  #m wheel seperation to centreline
-        wheel_diameter = 0.2 #m wheel diameter
+        wheel_distance = 0.16  #m wheel seperation to centreline
+        wheel_diameter = 0.074 #m wheel diameter
         self.ddrive = ActuatorConfiguration(wheel_distance, wheel_diameter) #look at your tutorial and see how to use this class
         
         self.initialise_pose = True # False once the pose is initialised  
 
         #waypoint
-        self.northings_path = [1.2, 0.5, 1.2, 0.2]
-        self.eastings_path = [0.5, 1.2, 1.2, 0.2]
-        self.relative_path = True # False if you want it to be absolute       
+        self.northings_path= [0.25, 1.25 , 1.25  , 0.25, 0.25]
+        self.eastings_path = [0.25 ,0.25 ,1.25 , 1.25  , 0.25]
+        self.relative_path = False # False if you want it to be absolute       
 
-        self.path = TrajectoryGenerate(self.northings_path, self.eastings_path) #initialise the path
+        self.path = TrajectoryGenerate(self.northings_path, self.eastings_path ) #initialise the path
 
-        # control parameters        
-        self.tau_s = 1  # s to remove along track error
+        # control parameters     
+        # self.tau_s = 0.5 # s to remove along track error
+   
+        self.tau_s = 0.25 # s to remove along track error
         self.L = 0.02  # m distance to remove normal and angular error
         self.v_max = 0.2  # fastest the robot can go
         self.w_max = np.deg2rad(30)  # fastest the robot can turn
 
         self.k_s = 1 / self.tau_s  # ks
-        self.k_n = 0  # kn
-        self.k_g = 0  # kg
+        self.k_n = 0.1  # kn
+        self.k_g = 0.1 # kg
 
-        self.initialise_control = False  # False once control gains are initialized
+        self.initialise_control = True  # False once control gains are initialized
 
         # model pose
         self.est_pose_northings_m = 0
@@ -137,7 +142,7 @@ class LaptopPilot:
         print("Received lidar message", msg.header.seq)
         
         if self.sim_init == True:
-            self.sim_time_offset = datetime.utcnow().timestamp() - msg.header.stamp
+            self.sim_time_offset = datetime.now(timezone.utc).timestamp() - msg.header.stamp
             self.sim_init = False     
 
         msg.header.stamp += self.sim_time_offset
@@ -187,13 +192,13 @@ class LaptopPilot:
 
         if aruco == True:
             if self.sim_init == True:
-                self.sim_time_offset = datetime.utcnow().timestamp()-msg[0]
+                self.sim_time_offset = datetime.now(timezone.utc).timestamp()-msg[0]
                 self.sim_init = False                                         
                 
             # self.sim_time_offset is 0 if not a simulation. Deals with webots dealing in elapse timeself.sim_time_offset
             print(
                 "Received position update from",
-                datetime.utcnow().timestamp() - msg[0] - self.sim_time_offset,
+                datetime.now(timezone.utc).timestamp() - msg[0] - self.sim_time_offset,
                 "seconds ago",
             )
             time_stamp = msg[0] + self.sim_time_offset                
@@ -219,7 +224,7 @@ class LaptopPilot:
                 self.eastings_path[i] += self.measured_pose_eastings_m  #offset by current eastings
 
             # convert path to matrix and create a trajectory class instance
-            C = l2m([self.northings_path, self.eastings_path])        
+            C = l2m([self.northings_path, self.eastings_path])       
             self.path = TrajectoryGenerate(C[:,0],C[:,1])     
             
             # set trajectory variables (velocity, acceleration and turning arc radius)
@@ -228,18 +233,16 @@ class LaptopPilot:
             self.path.turning_arcs(self.turning_radius) #turning radius
             self.path.wp_id = 0 #initialises the next waypoint
             # self.path.t_complete = np.nan # will log when the trajectory was complete 
-
-
             print('Trajectory wp timestamps\n',self.path.Tp_arc,'s')
 
 
     def run(self, time_to_run=-1):
-        self.start_time = datetime.utcnow().timestamp()
+        self.start_time = datetime.now(timezone.utc).timestamp()
         
         try:
             r = Rate(10.0)
             while True:
-                current_time = datetime.utcnow().timestamp()
+                current_time = datetime.now(timezone.utc).timestamp()
                 if time_to_run > 0 and current_time - self.start_time > time_to_run:
                     print("Time is up, stopping…")
                     break
@@ -274,6 +277,7 @@ class LaptopPilot:
             self.measured_pose_eastings_m = msg.pose.position.y
             _, _, self.measured_pose_yaw_rad = msg.pose.orientation.to_euler()        
             self.measured_pose_yaw_rad = self.measured_pose_yaw_rad % (np.pi*2) # manage angle wrapping
+            print('measured_pose_yaw_rad: ', self.measured_pose_yaw_rad)
 
             self.datalog.log(msg, topic_name="/aruco")
 
@@ -285,7 +289,7 @@ class LaptopPilot:
                 self.est_pose_yaw_rad = self.measured_pose_yaw_rad
 
                 # get current time and determine timestep
-                self.t_prev = datetime.utcnow().timestamp() #initialise the time
+                self.t_prev = datetime.now(timezone.utc).timestamp() #initialise the time
                 self.t = 0 #elapsed time
                 time.sleep(0.1) #wait for approx a timestep before proceeding
                 
@@ -301,12 +305,12 @@ class LaptopPilot:
             
             u = self.ddrive.fwd_kinematics(q)
             #determine the time step
-            t_now = datetime.utcnow().timestamp()        
+            t_now = datetime.now(timezone.utc).timestamp()   
             dt = t_now - self.t_prev #timestep from last estimate
             self.t += dt #add to the elapsed time
             self.t_prev = t_now #update the previous timestep for the next loop
 
-            # take current pose estimate and update by twist
+            # take current pose estimate and update by twist            
             p_robot = Vector(3)
             p_robot[0,0] = self.est_pose_northings_m
             p_robot[1,0] = self.est_pose_eastings_m
@@ -321,32 +325,34 @@ class LaptopPilot:
             self.est_pose_eastings_m = p_robot[1,0]
             self.est_pose_yaw_rad = p_robot[2,0]
             
-            print("Estimated Position:", self.est_pose_northings_m, self.est_pose_eastings_m, self.est_pose_yaw_rad)
-            print("Measured Position:", self.measured_pose_northings_m, self.measured_pose_eastings_m, self.measured_pose_yaw_rad)
+            # print("Estimated Position:", self.est_pose_northings_m, self.est_pose_eastings_m, self.est_pose_yaw_rad)
+            # print("Measured Position:", self.measured_pose_northings_m, self.measured_pose_eastings_m, self.measured_pose_yaw_rad)
 
             # logs the data             
-            msg = self.pose_parse([datetime.utcnow().timestamp(),self.est_pose_northings_m,self.est_pose_eastings_m,0,0,0,self.est_pose_yaw_rad])
+            msg = self.pose_parse([datetime.now(timezone.utc).timestamp(),self.est_pose_northings_m,self.est_pose_eastings_m,0,0,0,self.est_pose_yaw_rad])
             self.datalog.log(msg, topic_name="/aruco")
             self.datalog.log(msg, topic_name="/est_pose")
 
             #################### Trajectory sample #################################    
             # feedforward control: check wp progress and sample reference trajectory
-            self.path.wp_progress(t_now, p_robot, self.turning_radius)
-            p_ref, u_ref = self.path.p_u_sample(t_now)  # sample the path at the current elapsed time
-        
+            self.path.path_to_trajectory(self.velocity, self.acceleration)
+            self.path.turning_arcs(self.turning_radius)
+            self.path.wp_progress(self.t, p_robot, self.turning_radius)
+            p_ref, u_ref = self.path.p_u_sample(self.t)  # sample the path at the current elapsed time
+            # print('pref = ' ,  p_ref, 'uref = ' ,u_ref)
             
-            # # For visualization purposes, set the estimated pose to the reference pose
-            # self.est_pose_northings_m = p_ref[0,0]
-            # self.est_pose_eastings_m = p_ref[1,0]
-            # self.est_pose_yaw_rad = p_ref[2,0]
+            # For visualization purposes, set the estimated pose to the reference pose
+            self.est_pose_northings_m = p_ref[0,0]
+            self.est_pose_eastings_m = p_ref[1,0]
+            self.est_pose_yaw_rad = p_ref[2,0]
 
 
             # feedback control: get pose change to desired trajectory from body
             dp = p_ref - p_robot  # compute difference between reference and estimated pose in the e-frame
-            dp[2] = (dp[2] + np.pi) % (2 * np.pi) - np.pi  # handle angle wrapping for yaw
+            dp[2] = (dp[2] + np.pi) % (2 * np.pi) - np.pi # handle angle wrapping for yaw
             H_eb = HomogeneousTransformation(p_robot[0:2], p_robot[2])
             ds = Inverse(H_eb.H_R) @ dp    
-
+            # print('probot = ', p_robot, 'dp = ' ,dp)
             # compute control gains for the initial condition (where the robot is stationary)
             self.k_s = 1 / self.tau_s  # ks
 
@@ -377,27 +383,27 @@ class LaptopPilot:
             q = self.ddrive.inv_kinematics(u)
 
             wheel_speed_msg = Vector3Stamped()
-            wheel_speed_msg.vector.x = q[1, 0]  # Right wheelspeed rad/s
-            wheel_speed_msg.vector.y = q[0, 0]  # Left wheelspeed rad/s
+            wheel_speed_msg.vector.x = q[0, 0]  # Right wheelspeed rad/s
+            wheel_speed_msg.vector.y = q[1, 0]  # Left wheelspeed rad/s
         
             self.cmd_wheelrate_right = wheel_speed_msg.vector.x
             self.cmd_wheelrate_left = wheel_speed_msg.vector.y
-
-        # # ################################################################################
-        # # #  TODO: Implement your controller here                                        #
-
-        # wheel_speed_msg = Vector3Stamped()
-        # wheel_speed_msg.vector.x = 2 * np.pi  # Right wheel 1 rev/s = 1*pi rad/s
-        # wheel_speed_msg.vector.y = 2 * np.pi  # Left wheel 1 rev/s = 2*pi rad/s
-
-        # self.cmd_wheelrate_right = wheel_speed_msg.vector.x
-        # self.cmd_wheelrate_left = wheel_speed_msg.vector.y
-        # ################################################################################
-
-        # # > Act < #
-        # # Send commands to the robot        
+     
             self.wheel_speed_pub.publish(wheel_speed_msg)
             self.datalog.log(wheel_speed_msg, topic_name="/wheel_speeds_cmd")
+            
+
+    # else :
+
+        wheel_speed_msg = Vector3Stamped()
+        wheel_speed_msg.vector.x = 0 * np.pi  # Right wheel 1 rev/s = 1*pi rad/s
+        wheel_speed_msg.vector.y = 2 * np.pi  # Left wheel 1 rev/s = 2*pi rad/s
+
+        self.cmd_wheelrate_right = wheel_speed_msg.vector.x
+        self.cmd_wheelrate_left = wheel_speed_msg.vector.y
+
+        self.wheel_speed_pub.publish(wheel_speed_msg)
+        self.datalog.log(wheel_speed_msg, topic_name="/wheel_speeds_cmd")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
