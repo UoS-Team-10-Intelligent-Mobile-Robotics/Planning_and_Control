@@ -48,10 +48,10 @@ class LaptopPilot:
 
         ############# INITIALISE ATTRIBUTES ##########       
 
-        self.velocity = 0.1  # velocity in m/s
-        self.acceleration = 0.1/3 # acceleration in m/s^2
-        self.turning_radius = 0.45  # turning radius in meters
-        # self.turning_radius = 0.495  # turning radius in meters
+        self.velocity = 0.075  # velocity in m/s
+        self.acceleration = 0.1 # acceleration in m/s^2
+        self.turning_radius = 0.2 # turning radius in meters
+        self.acceptance_radius = 0.1  # acceptance radius in meters
 
         self.t_prev = 0  # previous time
         self.t = 0 #elapsed time
@@ -63,18 +63,18 @@ class LaptopPilot:
         
         self.initialise_pose = True # False once the pose is initialised  
 
-        #waypoint
-        self.northings_path= [0.25, 1.25 , 1.25  , 0.25, 0.25]
-        self.eastings_path = [0.25 ,0.25 ,1.25 , 1.25  , 0.25]
-        self.relative_path = False # False if you want it to be absolute       
+        # waypoint for octagon
+        self.northings_path = [0.5, 1, 1.5, 1.5, 1, 0.5, 0, 0]
+        self.eastings_path = [0.25, 0.25, 0.75, 1.25, 1.75, 1.75, 1.25, 0.75]
+        self.relative_path = False # False if you want it to be absolute , True it will offset based on 1st point but the same shape   
 
         self.path = TrajectoryGenerate(self.northings_path, self.eastings_path ) #initialise the path
 
         # control parameters     
         # self.tau_s = 0.5 # s to remove along track error
    
-        self.tau_s = 0.25 # s to remove along track error
-        self.L = 0.02  # m distance to remove normal and angular error
+        self.tau_s = 0.5 # s to remove along track error
+        self.L = 0.2  # m distance to remove normal and angular error
         self.v_max = 0.2  # fastest the robot can go
         self.w_max = np.deg2rad(30)  # fastest the robot can turn
 
@@ -82,7 +82,7 @@ class LaptopPilot:
         self.k_n = 0.1  # kn
         self.k_g = 0.1 # kg
 
-        self.initialise_control = True  # False once control gains are initialized
+        self.initialise_control = True  # False once control gains are initialized, dont change
 
         # model pose
         self.est_pose_northings_m = 0
@@ -174,7 +174,7 @@ class LaptopPilot:
         self.datalog.log(msg, topic_name="/lidar")
 
     def true_wheel_speeds_callback(self, msg):
-        print("Received sensed wheel speeds: R=", msg.vector.x, ", L=", msg.vector.y)
+        # print("Received sensed wheel speeds: R=", msg.vector.x, ", L=", msg.vector.y)
 
         # update wheel rates
         self.measured_wheelrate_right = msg.vector.x
@@ -189,18 +189,17 @@ class LaptopPilot:
     def pose_parse(self, msg, aruco = False):
         # parser converts pose data to a standard format for logging
         time_stamp = msg[0]
-
         if aruco == True:
             if self.sim_init == True:
                 self.sim_time_offset = datetime.now(timezone.utc).timestamp()-msg[0]
                 self.sim_init = False                                         
                 
             # self.sim_time_offset is 0 if not a simulation. Deals with webots dealing in elapse timeself.sim_time_offset
-            print(
-                "Received position update from",
-                datetime.now(timezone.utc).timestamp() - msg[0] - self.sim_time_offset,
-                "seconds ago",
-            )
+            # print(
+            #     "Received position update from",
+            #     datetime.now(timezone.utc).timestamp() - msg[0] - self.sim_time_offset,
+            #     "seconds ago",
+            # )
             time_stamp = msg[0] + self.sim_time_offset                
 
         pose_msg = PoseStamped() 
@@ -219,22 +218,25 @@ class LaptopPilot:
     def generate_trajectory(self):
         # pick waypoints as current pose relative or absolute northings and eastings
         if self.relative_path == True:
+
             for i in range(len(self.northings_path)):
                 self.northings_path[i] += self.measured_pose_northings_m #offset by current northings
                 self.eastings_path[i] += self.measured_pose_eastings_m  #offset by current eastings
 
             # convert path to matrix and create a trajectory class instance
-            C = l2m([self.northings_path, self.eastings_path])       
-            self.path = TrajectoryGenerate(C[:,0],C[:,1])     
+            # C = l2m([self.northings_path, self.eastings_path])       
+            self.path = TrajectoryGenerate(self.northings_path,self.eastings_path)     
             
             # set trajectory variables (velocity, acceleration and turning arc radius)
-
             self.path.path_to_trajectory(self.velocity, self.acceleration) #velocity and acceleration
             self.path.turning_arcs(self.turning_radius) #turning radius
+            # self.path.wp_id = len(self.path.Tp_arc) #initialises the next waypoint
             self.path.wp_id = 0 #initialises the next waypoint
+
             # self.path.t_complete = np.nan # will log when the trajectory was complete 
             print('Trajectory wp timestamps\n',self.path.Tp_arc,'s')
 
+    # def extended_kalman_filter(self):
 
     def run(self, time_to_run=-1):
         self.start_time = datetime.now(timezone.utc).timestamp()
@@ -298,17 +300,18 @@ class LaptopPilot:
 
         if self.initialise_pose != True:  
 
-            # convert true wheel speeds into twist
-            q = Vector(2)
-            q[0] = self.measured_wheelrate_right  # wheel rate rad/s (measured)
-            q[1] = self.measured_wheelrate_left  # wheel rate rad/s (measured)
-            
-            u = self.ddrive.fwd_kinematics(q)
             #determine the time step
             t_now = datetime.now(timezone.utc).timestamp()   
             dt = t_now - self.t_prev #timestep from last estimate
             self.t += dt #add to the elapsed time
             self.t_prev = t_now #update the previous timestep for the next loop
+
+            # convert true wheel speeds into twist
+            q = Vector(2) #twist, m/s, rad/s
+            q[0] = self.measured_wheelrate_right  # wheel rate rad/s (measured)
+            q[1] = self.measured_wheelrate_left  # wheel rate rad/s (measured)
+            
+            u = self.ddrive.fwd_kinematics(q)
 
             # take current pose estimate and update by twist            
             p_robot = Vector(3)
@@ -316,18 +319,16 @@ class LaptopPilot:
             p_robot[1,0] = self.est_pose_eastings_m
             p_robot[2,0] = self.est_pose_yaw_rad
 
-                                
-            p_robot = rigid_body_kinematics(p_robot, u, dt)
-            p_robot[2] = p_robot[2] % (2 * np.pi)  # deal with angle wrapping          
+            # might be conflicting here as we meausres the wheelrate convert to twist and take it for the next robot pose 
+            p_robot = rigid_body_kinematics(p_robot, u, dt) #est robot position aftter twist, t+1
+            p_robot[2] = p_robot[2] % (2 * np.pi)            
+            # these are new robot pose estimates
 
-            # update for show_laptop.py            
+            # # update for show_laptop.py    , this one should show after commenting below       
             self.est_pose_northings_m = p_robot[0,0]
             self.est_pose_eastings_m = p_robot[1,0]
             self.est_pose_yaw_rad = p_robot[2,0]
             
-            # print("Estimated Position:", self.est_pose_northings_m, self.est_pose_eastings_m, self.est_pose_yaw_rad)
-            # print("Measured Position:", self.measured_pose_northings_m, self.measured_pose_eastings_m, self.measured_pose_yaw_rad)
-
             # logs the data             
             msg = self.pose_parse([datetime.now(timezone.utc).timestamp(),self.est_pose_northings_m,self.est_pose_eastings_m,0,0,0,self.est_pose_yaw_rad])
             self.datalog.log(msg, topic_name="/aruco")
@@ -337,7 +338,15 @@ class LaptopPilot:
             # feedforward control: check wp progress and sample reference trajectory
             self.path.path_to_trajectory(self.velocity, self.acceleration)
             self.path.turning_arcs(self.turning_radius)
-            self.path.wp_progress(self.t, p_robot, self.turning_radius)
+
+            # p_robot[0,0] = self.measured_pose_northings_m 
+            # p_robot[1,0] = self.measured_pose_eastings_m
+            # p_robot[2,0] = self.measured_pose_yaw_rad
+
+            self.path.wp_progress(self.t, p_robot, self.acceptance_radius)
+
+            # print(self.measured_pose_northings_m, self.measured_pose_eastings_m, self.measured_pose_yaw_rad)
+            
             p_ref, u_ref = self.path.p_u_sample(self.t)  # sample the path at the current elapsed time
             # print('pref = ' ,  p_ref, 'uref = ' ,u_ref)
             
@@ -346,7 +355,6 @@ class LaptopPilot:
             self.est_pose_eastings_m = p_ref[1,0]
             self.est_pose_yaw_rad = p_ref[2,0]
 
-
             # feedback control: get pose change to desired trajectory from body
             dp = p_ref - p_robot  # compute difference between reference and estimated pose in the e-frame
             dp[2] = (dp[2] + np.pi) % (2 * np.pi) - np.pi # handle angle wrapping for yaw
@@ -354,6 +362,7 @@ class LaptopPilot:
             ds = Inverse(H_eb.H_R) @ dp    
             # print('probot = ', p_robot, 'dp = ' ,dp)
             # compute control gains for the initial condition (where the robot is stationary)
+            
             self.k_s = 1 / self.tau_s  # ks
 
             if self.initialise_control == True:
@@ -376,12 +385,21 @@ class LaptopPilot:
             if u[0] < -self.w_max: u[0] = -self.w_max
             if u[1] > self.v_max: u[1] = self.v_max
             if u[1] < -self.v_max: u[1] = -self.v_max
-
+            print(u)
             # p_robot = rigid_body_kinematics(p_robot,u,dt)
             # p_robot[2] = p_robot[2] % (2*np.pi)
             # actuator commands
             q = self.ddrive.inv_kinematics(u)
 
+            # # update laptop.py
+            # p_robot = rigid_body_kinematics(p_robot, u, dt) #est robot position aftter twist
+            # p_robot[2] = p_robot[2] % (2 * np.pi)            
+            # self.est_pose_northings_m = p_robot[0,0]
+            # self.est_pose_eastings_m = p_robot[1,0]
+            # self.est_pose_yaw_rad = p_robot[2,0]
+            
+            # print('q = ', q)
+            
             wheel_speed_msg = Vector3Stamped()
             wheel_speed_msg.vector.x = q[0, 0]  # Right wheelspeed rad/s
             wheel_speed_msg.vector.y = q[1, 0]  # Left wheelspeed rad/s
@@ -395,15 +413,15 @@ class LaptopPilot:
 
     # else :
 
-        wheel_speed_msg = Vector3Stamped()
-        wheel_speed_msg.vector.x = 0 * np.pi  # Right wheel 1 rev/s = 1*pi rad/s
-        wheel_speed_msg.vector.y = 2 * np.pi  # Left wheel 1 rev/s = 2*pi rad/s
+        # wheel_speed_msg = Vector3Stamped()
+        # wheel_speed_msg.vector.x = 0 * np.pi  # Right wheel 1 rev/s = 1*pi rad/s
+        # wheel_speed_msg.vector.y = 2 * np.pi  # Left wheel 1 rev/s = 2*pi rad/s
 
-        self.cmd_wheelrate_right = wheel_speed_msg.vector.x
-        self.cmd_wheelrate_left = wheel_speed_msg.vector.y
+        # self.cmd_wheelrate_right = wheel_speed_msg.vector.x
+        # self.cmd_wheelrate_left = wheel_speed_msg.vector.y
 
-        self.wheel_speed_pub.publish(wheel_speed_msg)
-        self.datalog.log(wheel_speed_msg, topic_name="/wheel_speeds_cmd")
+        # self.wheel_speed_pub.publish(wheel_speed_msg)
+        # self.datalog.log(wheel_speed_msg, topic_name="/wheel_speeds_cmd")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
