@@ -22,6 +22,8 @@ from model_feeg6043 import TrajectoryGenerate
 from math_feeg6043 import l2m
 from model_feeg6043 import feedback_control
 from math_feeg6043 import Inverse, HomogeneousTransformation
+import numpy as np
+
 
 class LaptopPilot:
     # def __init__(self, simulation, self.kg, self,kn, self.tau_s):
@@ -30,7 +32,7 @@ class LaptopPilot:
         # network for sensed pose
         aruco_params = {
             "port": 50000,  # Port to listen to (DO NOT CHANGE)
-            "marker_id": 20,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
+            "marker_id": 25,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
         }
         self.robot_ip = "192.168.90.1"
         
@@ -64,8 +66,11 @@ class LaptopPilot:
         self.initialise_pose = True # False once the pose is initialised  
 
         # waypoint for octagon
-        self.northings_path = [0.5, 1, 1.5, 1.5, 1, 0.5, 0, 0]
-        self.eastings_path = [0.25, 0.25, 0.75, 1.25, 1.75, 1.75, 1.25, 0.75]
+        # self.northings_path = [0.5, 1, 1.5, 1.5, 1, 0.5, 0.25, 0.25]
+        # self.eastings_path = [0.25, 0.25, 0.75, 1.25, 1.65, 1.65, 1.25, 0.75]
+
+        self.northings_path = [0.25, 1.6, 1.6, 0.25]
+        self.eastings_path = [0.25, 0.25, 1.5, 1.5]
         self.relative_path = False # False if you want it to be absolute , True it will offset based on 1st point but the same shape   
 
         self.path = TrajectoryGenerate(self.northings_path, self.eastings_path ) #initialise the path
@@ -73,8 +78,8 @@ class LaptopPilot:
         # control parameters     
         # self.tau_s = 0.5 # s to remove along track error
    
-        self.tau_s = 0.5 # s to remove along track error
-        self.L = 0.2  # m distance to remove normal and angular error
+        self.tau_s = 0.3 # s to remove along track error
+        self.L = 0.1  # m distance to remove normal and angular error
         self.v_max = 0.2  # fastest the robot can go
         self.w_max = np.deg2rad(30)  # fastest the robot can turn
 
@@ -379,13 +384,13 @@ class LaptopPilot:
             # update control gains for the next timestep
             self.k_n = 2 * u[0] / self.L**2  # kn
             self.k_g = u[0] / self.L  # kg
-
+            print('kn kg = ',self.k_n, self.k_g)
             # ensure within performance limitation
             if u[0] > self.w_max: u[0] = self.w_max
             if u[0] < -self.w_max: u[0] = -self.w_max
             if u[1] > self.v_max: u[1] = self.v_max
             if u[1] < -self.v_max: u[1] = -self.v_max
-            print(u)
+            # print(u)
             # p_robot = rigid_body_kinematics(p_robot,u,dt)
             # p_robot[2] = p_robot[2] % (2*np.pi)
             # actuator commands
