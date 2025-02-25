@@ -22,6 +22,7 @@ from model_feeg6043 import TrajectoryGenerate
 from math_feeg6043 import l2m
 from model_feeg6043 import feedback_control
 from math_feeg6043 import Inverse, HomogeneousTransformation
+from model_feeg6043 import extended_kalman_filter_predict, extended_kalman_filter_update
 
 class LaptopPilot:
     # def __init__(self, simulation, self.kg, self,kn, self.tau_s):
@@ -425,3 +426,108 @@ if __name__ == "__main__":
 
     laptop_pilot = LaptopPilot(args.simulation)
     laptop_pilot.run(args.time)
+    
+#Defining the extended kalman filter
+def extended_kalman_filter_predict(mu, Sigma, u, f, R, dt):
+    # (1) Project the state forward
+    pred_mu, F = f(mu, u, dt)
+      
+    # (2) Project the error forward: 
+    pred_Sigma = (F @ Sigma @ F.T) + R
+    
+    # Return the predicted state and the covariance
+    return pred_mu, pred_Sigma
+
+def extended_kalman_filter_update(mu, Sigma, z, h, Q, wrap_index = None):
+    
+    # Prepare the estimated measurement
+    pred_z, H = h(mu)
+ 
+    # (3) Compute the Kalman gain
+    K = Sigma @ H.T @ np.linalg.inv(H @ Sigma @ H.T + Q)
+    
+    # (4) Compute the updated state estimate
+    delta_z = z- pred_z        
+    if wrap_index != None: delta_z[wrap_index] = (delta_z[wrap_index] + np.pi) % (2 * np.pi) - np.pi    
+    cor_mu = mu + K @ (delta_z)
+
+    # (5) Compute the updated state covariance
+    cor_Sigma = (np.eye(mu.shape[0], dtype=float) - K @ H) @ Sigma
+    
+    # Return the state and the covariance
+    return cor_mu, cor_Sigma
+
+#Ekf motion model implementation
+N = 0
+E = 1
+G = 2
+DOTX = 3
+DOTG = 4
+
+def motion_model(state, u, dt):
+        
+    N_k_1 = state[N]
+    E_k_1 = state[E]
+    G_k_1 = state[G]
+    DOTX_k_1 = state[DOTX]
+    DOTG_k_1 = state[DOTG]
+
+    p = Vector(3)
+    p[0] = N_k_1
+    p[1] = E_k_1
+    p[2] = G_k_1
+    
+    # note rigid_body_kinematics already handles the exception dynamics of w=0
+    p = rigid_body_kinematics(p,u,dt)    
+
+    # vertically joins two vectors together
+    state = np.vstack((p, u))
+    
+    N_k = state[N]
+    E_k = state[E]
+    G_k = state[G]
+    DOTX_k = state[DOTX]
+    DOTG_k = state[DOTG]
+    
+    # Compute its jacobian
+    F = Identity(5)    
+    
+    if abs(DOTG_k) <1E-2: # caters for zero angular rate, but uses a threshold to avoid numerical instability
+        F[N, G] = -DOTX_k * dt * np.sin(G_k_1)
+        F[N, DOTX] = dt * np.cos(G_k_1)
+        F[E, G] = DOTX_k * dt * np.cos(G_k_1)
+        F[E, DOTX] = dt * np.sin(G_k_1)
+        F[G, DOTG] = dt       
+        
+    else:
+        F[N, G] = (DOTX_k/DOTG_k)*(np.cos(G_k)-np.cos(G_k_1))
+        F[N, DOTX] = (1/DOTG_k)*(np.sin(G_k)-np.sin(G_k_1))
+        F[N, DOTG] = (DOTX_k/(DOTG_k**2))*(np.sin(G_k_1)-np.sin(G_k))+(DOTX_k*dt/DOTG_k)*np.cos(G_k)
+        F[E, G] = (DOTX_k/DOTG_k)*(np.sin(G_k)-np.sin(G_k_1))
+        F[E, DOTX] = (1/DOTG_k)*(np.cos(G_k_1)-np.cos(G_k))
+        F[E, DOTG] = (DOTX_k/(DOTG_k**2))*(np.cos(G_k)-np.cos(G_k_1))+(DOTX_k*dt/DOTG_k)*np.sin(G_k)
+        F[G, DOTG] = dt
+
+    return state, F
+
+#Applying control parameters
+start = 0
+end = 24
+timestep = 1 #s
+num_points = int( end / timestep )+1
+t_list = np.linspace(start, end, num_points)
+v_list = []
+w_list = []
+for i in range(len(t_list)):
+    if t_list[i] <= 10:
+        v_list.append(2)
+        w_list.append(0)
+    elif t_list[i]<= 14:
+        v_list.append(0)
+        w_list.append(np.deg2rad(90/4))
+    else:
+        v_list.append(2)
+        w_list.append(0)   
+    
+T_u = l2m(t_list)
+U = l2m([v_list,w_list])
