@@ -510,9 +510,126 @@ def motion_model(state, u, dt):
 
     return state, F
 
-#Applying control parameters
+#v define a zero matrix and a one matrix
+zm = Matrix(1,1)
+om = Matrix(1,1); om[0,0] = 1
+
+# Previous belief and timestep
+state = zm; covariance = om 
+dt = 1
+
+# Set control and process noise
+u = 2*om
+R = 2*om
+
+# Set measurement and measurement noise 
+z = -2*om
+
+# Task 2
+Q = np.multiply(om, 10E-10)
+view_flag = True
+
+pred_state, pred_covariance = extended_kalman_filter_predict(state, covariance, u, f_nonlin, R, dt,view_flag=view_flag)
+
+# Task 2
+cor_state, cor_covariance = extended_kalman_filter_update(pred_state, pred_covariance, z, h, Q,view_flag=view_flag)
+
+z_list = [0.5, 1.0]
+Z = l2m(z_list)
+tz_list = [2, 4]
+Q = 2*om
+idx = 0 #initial pointer to check for sensor measurements
+###################################################################
+# Previous belief and timestep
+###################################################################
+state = zm; covariance = om 
+t_prev=0
+
+
+X = Vector(0)
+COV = Vector(0)
+
+#################################################################
+# Main simulation loop
+#################################################################
+for i in range(len(T)):
+
+    # get next timestamp to model to and compute time interval ()
+    t=T[i]
+    dt = t-t_prev
+    
+    # state, covariance = ?? # Task 1
+    state, covariance = extended_kalman_filter_predict(state, covariance, u, f_nonlin, R, dt, view_flag = True)
+    print('Time is', t, 's', 'control is', u, 'state is', state, 'covariance is', covariance)
+    
+    if t == tz_list[idx]:
+        z = Z[idx:idx+1]        
+        # state, covariance = ?? # Task 2
+        state, covariance = extended_kalman_filter_update(state, covariance, z, h, Q, view_flag = True)
+        if idx < len(tz_list)-1: idx+=1        
+   
+    # store state and covariance
+    X = np.vstack((X, state))
+    COV = np.vstack((COV, covariance))
+    
+    # store timestamp to calculate dt
+    t_prev = t
+
+    # Easy names for indexing
+N = 0
+E = 1
+G = 2
+DOTX = 3
+DOTG = 4
+
+def motion_model(state, u, dt):
+        
+    N_k_1 = state[N]
+    E_k_1 = state[E]
+    G_k_1 = state[G]
+    DOTX_k_1 = state[DOTX]
+    DOTG_k_1 = state[DOTG]
+
+    p = Vector(3)
+    p[0] = N_k_1
+    p[1] = E_k_1
+    p[2] = G_k_1
+    
+    # note rigid_body_kinematics already handles the exception dynamics of w=0
+    p = rigid_body_kinematics(p,u,dt)    
+
+    # vertically joins two vectors together
+    state = np.vstack((p, u))
+    
+    N_k = state[N]
+    E_k = state[E]
+    G_k = state[G]
+    DOTX_k = state[DOTX]
+    DOTG_k = state[DOTG]
+    
+    # Compute its jacobian
+    F = Identity(5)    
+    
+    if abs(DOTG_k) <1E-2: # caters for zero angular rate, but uses a threshold to avoid numerical instability
+        F[N, G] = -DOTX_k * dt * np.sin(G_k_1)
+        F[N, DOTX] = dt * np.cos(G_k_1)
+        F[E, G] = DOTX_k * dt * np.cos(G_k_1)
+        F[E, DOTX] = dt * np.sin(G_k_1)
+        F[G, DOTG] = dt       
+        
+    else:
+        F[N, G] = (DOTX_k/DOTG_k)*(np.cos(G_k)-np.cos(G_k_1))
+        F[N, DOTX] = (1/DOTG_k)*(np.sin(G_k)-np.sin(G_k_1))
+        F[N, DOTG] = (DOTX_k/(DOTG_k**2))*(np.sin(G_k_1)-np.sin(G_k))+(DOTX_k*dt/DOTG_k)*np.cos(G_k)
+        F[E, G] = (DOTX_k/DOTG_k)*(np.sin(G_k)-np.sin(G_k_1))
+        F[E, DOTX] = (1/DOTG_k)*(np.cos(G_k_1)-np.cos(G_k))
+        F[E, DOTG] = (DOTX_k/(DOTG_k**2))*(np.cos(G_k)-np.cos(G_k_1))+(DOTX_k*dt/DOTG_k)*np.sin(G_k)
+        F[G, DOTG] = dt
+
+    return state, F
+
 start = 0
-end = 24
+end = 52
 timestep = 1 #s
 num_points = int( end / timestep )+1
 t_list = np.linspace(start, end, num_points)
@@ -521,13 +638,180 @@ w_list = []
 for i in range(len(t_list)):
     if t_list[i] <= 10:
         v_list.append(2)
-        w_list.append(0)
-    elif t_list[i]<= 14:
+        w_list.append(np.deg2rad(0.0))
+    elif t_list[i] <= 14:
         v_list.append(0)
         w_list.append(np.deg2rad(90/4))
+    elif t_list[i] <= 24:
+        v_list.append(2)
+        w_list.append(np.deg2rad(0.0))
+    elif t_list[i] <= 28:
+        v_list.append(0)
+        w_list.append(np.deg2rad(90/4))
+    elif t_list[i] <= 38:
+        v_list.append(2)
+        w_list.append(np.deg2rad(0.0))
+    elif t_list[i] <= 42:
+        v_list.append(0)
+        w_list.append(np.deg2rad(90/4))    
     else:
         v_list.append(2)
-        w_list.append(0)   
+        w_list.append(np.deg2rad(0.0))   
     
 T_u = l2m(t_list)
 U = l2m([v_list,w_list])
+
+# initialise states
+state = Vector(5)
+X = state.T
+t=copy.copy(T_u[0])
+
+# counter to point to the next control timestep, flag to show an event just happend
+idx = 0
+
+
+# simulation in a while loop
+while t <T_u[-1]:
+    
+    # calculate dt
+    dt= T_u[idx] - t       
+        
+    # apply the model with to progress to dt with old control values
+    state, F = motion_model(state, U[idx:idx+1,:].T, dt)    
+        
+    # progress time and store state
+    X = np.vstack((X, state.T))        
+        
+    t = T_u[idx]
+    if idx != len(T_u): idx += 1
+ 
+    
+# plot the path
+P = X[:,0:3]
+
+# initial state and covariance
+state = init_state
+covariance = init_covariance
+
+# containors to store the data
+X = state.T
+
+COV = init_covariance.T
+
+# containors for control and measyrenebts
+
+# define pointers for our control and measurement data
+u_idx = 0
+g_idx = 0
+ne_idx = 0
+
+# get initial and timestamp and create containor to store times
+t_prev=np.min([T_u[0],T_g[0],T_ne[0]])
+t_end=np.max([T_u[-1],T_g[-1],T_ne[-1]]) 
+T = Vector(1)
+T[0,0] = t_prev
+
+#################################################################
+# Main simulation loop
+#################################################################
+while t_prev < t_end:    
+    
+    # Check which timestamp to process first
+    next_stamp = None
+    u_stamp = None
+    g_stamp = None
+    ne_stamp = None 
+          
+    if u_idx < len(T_u):
+        u_stamp = T_u[u_idx]
+
+    if g_idx < len(T_g):
+        g_stamp = T_g[g_idx]
+
+    if ne_idx < len(T_ne):
+        ne_stamp = T_ne[ne_idx]     
+    
+    potential_stamps = [
+        u_stamp,
+        g_stamp,
+        ne_stamp        
+    ]
+        
+    valid_stamps = [i for i in potential_stamps if i is not None]
+    
+    if valid_stamps:
+        t = min(valid_stamps) 
+    else:
+        break  # If there is no timestep left to predict to, simulation finishes
+    
+    dt = t - t_prev
+    
+    if t == u_stamp:
+            u = U[u_idx:u_idx+1,:].T
+            u_idx += 1
+            
+    if dt != 0:                              
+        state, covariance = extended_kalman_filter_predict(state, covariance, u, motion_model, R, dt)
+        
+    if t == g_stamp: 
+        z = Vector(5)
+        Q = Identity(5)        
+        
+        h = h_g_update
+        z[G] = Z_g[g_idx:g_idx+1,:]
+        Q[G, G] = G_std[g_idx:g_idx+1]**2
+        if g_idx < len(T_g): g_idx+=1 
+        
+        #Task 3
+        state, covariance = extended_kalman_filter_update(state, covariance, z, h, Q, wrap_index = G)      
+
+        
+    # position updatee
+    
+    if t == ne_stamp: 
+        z = Vector(5)
+        Q = Identity(5)        
+        
+        h = h_ne_update
+        z[N] = Z_ne[ne_idx:ne_idx+1,:][0,0]
+        z[E] = Z_ne[ne_idx:ne_idx+1,:][0,1]
+        Q[N, N] = NE_std[ne_idx:ne_idx+1][0,0]**2
+        Q[E, E] = NE_std[ne_idx:ne_idx+1][0,1]**2
+        
+        if ne_idx < len(T_ne): ne_idx+=1 
+
+        state, covariance = extended_kalman_filter_update(state, covariance, z, h, Q)  
+        
+        
+    X = np.vstack((X,state.T))
+        
+    COV = np.vstack((COV,covariance.T))
+    T = np.vstack((T,t))
+        
+    t_prev = t
+    
+    
+plot_EKF_trajectory(X, COV, flip=True, measurements = [Z_ne, NE_std], keyframe = 1)
+
+
+P = X[:,0:3]
+plot_path(P, legend_flag = False, verbose = False)
+
+# plot the heading as a function of time
+heading = []
+
+for i in range(len(T)): 
+    heading.append(X[i,G])
+
+   
+# plot the uncertainties as a function of time
+n_std = []
+e_std = []
+g_std = []
+j = len(state)
+
+for i in range(len(T)):    
+    n_std.append(np.sqrt(COV[i*j+N,N]))
+    e_std.append(np.sqrt(COV[i*j+E,E]))
+    g_std.append(np.rad2deg(np.sqrt(COV[i*j+G,G])))
+
