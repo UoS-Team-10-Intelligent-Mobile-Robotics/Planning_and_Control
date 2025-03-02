@@ -3,4 +3,5 @@
 *.txt
 *.imr_webots.wbproj
 PKG-INFO
-*.cpython-313*
+*.cpython-3*
+2025*_log.json

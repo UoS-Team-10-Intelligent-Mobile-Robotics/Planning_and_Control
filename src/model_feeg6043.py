@@ -3,6 +3,10 @@ import copy
 from matplotlib import pyplot as plt
 from math_feeg6043 import Vector,Matrix,Identity,Transpose,Inverse,v2t,t2v,HomogeneousTransformation, interpolate, short_angle, inward_unit_norm, line_intersection, cartesian2polar, polar2cartesian
 from plot_feeg6043 import plot_kalman
+from numpy.random import randn, random, uniform, multivariate_normal, seed
+from scipy.stats import norm
+from sklearn.neighbors import KernelDensity
+
 
 def rigid_body_kinematics(mu,u,dt=0.1):
     #################################################################################
@@ -121,9 +125,9 @@ class ActuatorConfiguration:
     Attributes:
     -----------
     G: Matrix(2,2)
-        Actuator configuration matrix [d/4 d/4; -d/2W d/W] 
+        Actuator configuration matrix [d/4 d/4; -d/4W d/4W] 
     invG: Matrix(2,2)
-        Inverse of actuator configuration matrix [2/d -W/d; 2/d W/d]     
+        Inverse of actuator configuration matrix [2/d -2W/d; 2/d 2W/d]     
         
     Functions:
     -----------
@@ -165,13 +169,13 @@ class ActuatorConfiguration:
         
         self.G[0,0] = d/4
         self.G[0,1] = d/4
-        self.G[1,0] = -d/(2*W)
-        self.G[1,1] = d/(2*W)
+        self.G[1,0] = -d/(4*W)
+        self.G[1,1] = d/(4*W)
         
         self.invG[0,0] = 2/d
-        self.invG[0,1] = -W/d                
+        self.invG[0,1] = -2*W/d                
         self.invG[1,0] = 2/d        
-        self.invG[1,1] = W/d                        
+        self.invG[1,1] = 2*W/d                        
     
     def inv_kinematics(self, u): q = self.invG @ u; return q
     def fwd_kinematics(self, q): u = self.G @ q ; return u
@@ -319,7 +323,6 @@ class RangeAngleKinematics():
             z_lm[1] = np.nan           
         
         # out of scan fov
-        z_lm[1] = (z_lm[1] + np.pi) % (2 * np.pi) - np.pi
         if z_lm[1]>0.5*self.scan_fov or z_lm[1]<-0.5*self.scan_fov: 
             z_lm[1] = np.nan
             z_lm[0] = np.nan       
@@ -1044,6 +1047,21 @@ class TrajectoryGenerate():
         
         return P, Tp, V, W, D     
 
+def feedback_control(ds, ks = None, kn = None, kg = None):
+    
+    if ks == None: ks = 0.1
+    if kn == None: kn = 0.1
+    if kg == None: kg = 0.1        
+    
+    dv = ks*ds[0]                
+    dw = (kn*ds[1]+kg*ds[2])
+    
+    du = Vector(2)
+    du[0] = dv
+    du[1] = dw
+    
+    return du
+
 def kalman_filter_predict(mu, Sigma, u, A, B, R, view_flag=None, x=None, ylim=None):
     """
     Keyword arguments:    
@@ -1091,7 +1109,7 @@ def kalman_filter_update(mu, Sigma, z, C, Q, view_flag=None, x=None, ylim=None):
     # Return the correct state and the covariance        
     return update_mu, update_Sigma
 
-def extended_kalman_filter_predict(mu, Sigma, u, f, R, dt, view_flag=None, x=None, ylim=None):
+def extended_kalman_filter_predict(mu, Sigma, u, f, R, dt, view_flag=False, x=None, xlim=None, ylim=None):
     """
     Keyword arguments:    
     view_flag -- A boolean to show intermediate plots of the prediction and measurement update
@@ -1101,20 +1119,23 @@ def extended_kalman_filter_predict(mu, Sigma, u, f, R, dt, view_flag=None, x=Non
     pred_mu, F = f(mu, u, dt)
       
     # (2) Project the error forward: 
-    pred_Sigma = (F @ Sigma @ F.T) + R
+
+    pred_Sigma = (F @ copy.copy(Sigma) @ F.T) + R
+    
+
     
     # Return the predicted state and the covariance
 
     if view_flag is True:
-        if x is None: x = np.arange(-8,8,0.05) 
-        if ylim is None: ylim=[0,0.55] #default, otherwise use what is provided
-            
-        plot_kalman(mu, Sigma, pred_mu, pred_Sigma, x, ylim)
+        if x is None: x = np.arange(mu-10,mu+10,0.05) 
+        if ylim is None: ylim=[0,0.6] #default, otherwise use what is provided    
+        if xlim is None: xlim=[-5,5] #default, otherwise use what is provided            
+        plot_kalman(mu, Sigma, pred_mu, pred_Sigma, x, xlim, ylim)
 
     # Return the state and the covariance
     return pred_mu, pred_Sigma
 
-def extended_kalman_filter_update(mu, Sigma, z, h, Q, view_flag=None, x=None, ylim =None):
+def extended_kalman_filter_update(mu, Sigma, z, h, Q, view_flag=False, x=None, xlim=None, ylim =None, wrap_index = None):
     """Keyword arguments:    
     view_flag -- A boolean to show intermediate plots of the prediction and measurement update
     optional argument -- a range of states to plot probabilities over, using numpy arrays e.g. np.arange(-8,8,0.05)    
@@ -1127,31 +1148,228 @@ def extended_kalman_filter_update(mu, Sigma, z, h, Q, view_flag=None, x=None, yl
     K = Sigma @ H.T @ np.linalg.inv(H @ Sigma @ H.T + Q)
     
     # (4) Compute the updated state estimate
-    cor_mu = mu + K @ (z - pred_z)
+    delta_z = z- pred_z        
+    if wrap_index != None: delta_z[wrap_index] = (delta_z[wrap_index] + np.pi) % (2 * np.pi) - np.pi    
+    cor_mu = mu + K @ (delta_z)
 
     # (5) Compute the updated state covariance
     cor_Sigma = (np.eye(mu.shape[0], dtype=float) - K @ H) @ Sigma
     
     if view_flag is True:
-        if x is None: x = np.arange(-8,8,0.05) 
-        if ylim is None: ylim=[0,0.55] #default, otherwise use what is provided
+        if x is None: x = np.arange(mu-10,mu+10,0.05) 
+        if xlim is None: xlim=[-5,5] #default, otherwise use what is provided
+        if ylim is None: ylim=[0,0.6] #default, otherwise use what is provided
             
-        plot_kalman(mu, Sigma, cor_mu,cor_Sigma, x, ylim, z, H[0,0], Q)    
+        plot_kalman(mu, Sigma, cor_mu, cor_Sigma, x, xlim, ylim, z, H[0,0], Q)    
 
     # Return the state and the covariance
     return cor_mu, cor_Sigma
 
-def feedback_control(ds, ks = None, kn = None, kg = None):
+
+class Particles:
+    def __init__(self, N):
+        self.N = N
+        self.northings = np.array([None] * N)  # State - to be estimated
+        self.eastings = np.array([None] * N)   # State - to be estimated
+        self.gamma = np.array([None] * N)      # State provided with noise
+        self.x_dot = np.array([None] * N)       # State provided with noise
+        self.gamma_dot = np.array([None] * N)      # State provided with noise
+        self.weight = np.ones(N) / float(N)    # Particle weights     
+        
+    def __str__(self):
+        return "northings: " + str(self.northings) + "\neastings: " + str(self.eastings) + "\nweights: " + str(self.weight)
+
+
+def systematic_resample(weights, demo=False):
+    N = len(weights)
+    random_number = np.random.uniform()
+    positions = (np.arange(N) + random_number) / N
+    indexes = np.zeros(N, "i")
+
+    # Normalize the weights, so that the sum of the weights is 1
+    ws = np.sum(weights)
+    for i in range(N):
+        weights[i] /= ws
+    cumulative_sum = np.cumsum(weights)
+    cumulative_sum[-1] = 1.0  # avoid round-off error
+
+    i, j = 0, 0
+    while i < N:
+        if positions[i] < cumulative_sum[j]:
+            indexes[i] = j
+            i += 1
+        else:
+            j += 1
+    if not demo:
+        return indexes
+    if demo:
+        return indexes, random_number
     
-    if ks == None: ks = 0.1
-    if kn == None: kn = 0.1
-    if kg == None: kg = 0.1        
+
+def kde_probability(particles, sigma_resolution=1.0, sampling_resolution=None):
     
-    dv = ks*ds[0]                
-    dw = (kn*ds[1]+kg*ds[2])
+    # fit the particles to the KDE model
+    locations = np.vstack([particles.northings, particles.eastings])
     
-    du = Vector(2)
-    du[0] = dv
-    du[1] = dw
+    if sampling_resolution == None:
+        # returns the probability of each particle location
+        kde = KernelDensity(kernel='gaussian', bandwidth=sigma_resolution).fit(locations.T)
+        log_density = kde.score_samples(locations.T)
+        probability = np.exp(log_density)
+        
+        return probability   
     
-    return du
+    else:
+        # returns the most likely location at a given sample resolution
+        kde = KernelDensity(kernel='gaussian', bandwidth=sigma_resolution).fit(locations.T, sample_weight=particles.weight.T)
+
+        state_range_northings = np.linspace(min(particles.northings),max(particles.northings), num=sampling_resolution)
+        state_range_eastings = np.linspace(min(particles.eastings),max(particles.eastings), num=sampling_resolution)
+
+        state_range = np.vstack([state_range_northings, state_range_eastings])
+        density = kde.score_samples(state_range.T)       
+        est_northings, est_eastings = state_range.T[density.argmax()]
+        
+        return est_northings, est_eastings   
+    
+def initialise_particle_distribution(particles, centre=[0, 0], radius = 1, heading = 0):
+
+    # sample angles and ranges
+    theta = np.random.uniform(0, 360, particles.N)
+    r = np.sqrt(np.random.uniform(0, 1, particles.N)) * radius    
+
+    # convert to cartesian    
+    northings, eastings = polar2cartesian(r,np.deg2rad(theta))
+    
+    # add centre offset
+    particles.northings  = northings + centre[0]
+    particles.eastings = eastings + centre[1]
+    
+    # particles could be pointing anywhere
+    particles.gamma = np.random.uniform(heading - np.deg2rad(10) , heading + np.deg2rad(10), particles.N)
+    
+def pf_measurement_probability(particles, measurement):    
+    # calculate likelihood of each particle given the observation 
+    delta = np.sqrt(measurement.northings_std*measurement.eastings_std)
+    probability = []
+    for i in range(particles.N):
+        particle_to_measurement=(particles.northings[i]-measurement.northings)**2+(particles.eastings[i]-measurement.eastings)**2
+        num = np.exp(-(particle_to_measurement)/(2*delta**2))
+        den = np.sqrt(2*np.pi*delta**2)
+        probability.append(num/den)   
+        
+    return probability
+
+class Measurement:
+    def __init__(self):
+        self.timestamp = np.array([None])
+        self.northings = np.array([None])
+        self.eastings = np.array([None])
+        self.northings_std = np.array([None])
+        self.eastings_std = np.array([None])   
+
+
+def kde_probability(particles, sigma_resolution=1.0, sampling_resolution=None):
+    
+    # fit the particles to the KDE model
+    locations = np.vstack([particles.northings, particles.eastings])
+    
+    if sampling_resolution == None:
+        # returns the probability of each particle location
+        kde = KernelDensity(kernel='gaussian', bandwidth=sigma_resolution).fit(locations.T)
+        log_density = kde.score_samples(locations.T)
+        probability = np.exp(log_density)
+        
+        return probability   
+    
+    else:
+        # returns the most likely location at a given sample resolution
+        kde = KernelDensity(kernel='gaussian', bandwidth=sigma_resolution).fit(locations.T, sample_weight=particles.weight.T)
+
+        state_range_northings = np.linspace(min(particles.northings),max(particles.northings), num=sampling_resolution)
+        state_range_eastings = np.linspace(min(particles.eastings),max(particles.eastings), num=sampling_resolution)
+
+        state_range = np.vstack([state_range_northings, state_range_eastings])
+        density = kde.score_samples(state_range.T)       
+        est_northings, est_eastings = state_range.T[density.argmax()]
+        
+        return est_northings, est_eastings    
+
+def pf_normalise_weights(weights):
+    ws = sum(weights)
+    for i in range(len(weights)):
+        weights[i] /= ws    
+    return weights
+
+def pf_update(particles, measurement):
+    tau = pf_measurement_probability(particles, measurement) 
+    
+    sigma_resolution = np.sqrt(measurement.northings_std*measurement.eastings_std)
+    prior_tau = kde_probability(particles, sigma_resolution)
+
+    particles.weight *= tau /prior_tau
+    pf_normalise_weights(particles.weight)
+
+    return particles
+
+def neff(particles): 
+    particles.weight /= np.sum(particles.weight)
+    return 1.0 / (particles.N * np.sum(np.square(particles.weight)))
+
+def pf_resample(particles, jitter, verbose = False):
+    """Resample particles using systematic resample"""
+    
+    if verbose == True: print('effective particles:', neff(particles))
+    if neff(particles) < 0.5:
+        # Get the indexes of the particles to resample
+        indexes = systematic_resample(particles.weight)
+        if verbose == True: print('Resampling needed, sampled particles:',indexes)
+              
+        # Copy all the particles, to overwrite "particles"
+        particles_copy = copy.deepcopy(particles)
+        
+        angle = np.random.uniform(0,2*np.pi, particles.N)
+        radius = np.random.normal(0,jitter, particles.N) 
+        
+        # Overwrite "particles" with the copied ones and correct indices
+        for i in range(particles.N):
+            particles.northings[i] = copy.deepcopy(particles_copy.northings[indexes[i]])+radius[i] * np.cos(angle[i])
+            particles.eastings[i] = copy.deepcopy(particles_copy.eastings[indexes[i]])+radius[i] * np.sin(angle[i])
+        
+        # Reset the weights to equally probable
+        particles.weight = np.ones(particles.N) / float(particles.N)
+    else: 
+        if verbose == True: print('No resampling needed')
+
+
+def discrete_motion_model(particles, gamma, u, dt, process_noise):
+    
+        g_std = np.sqrt(process_noise[0])
+        x_dot_std = np.sqrt(process_noise[1])
+        g_dot_std = np.sqrt(process_noise[2])
+        
+        for i in range(particles.N):
+
+            p = Vector(3)
+            
+            # noise is not added to the location of the particles as the distribution already represents the noise and this is what our PF will update based on sensor observations
+            p[0] = particles.northings[i]
+            p[1] = particles.eastings[i]
+
+            # We treat the other states as auxilliary (Rao-Blackwellisation), where noise is random sampled from a distribution and added   
+            if gamma != None: p[2] = gamma + np.random.normal(scale=g_std) % (2*np.pi)               
+            else: p[2] = particles.gamma[i] + np.random.normal(scale=g_std) % (2*np.pi)  
+            
+            u_noise = Vector(2)
+            u_noise[0] = u[0] + np.random.normal(scale=x_dot_std)
+            u_noise[1] = u[1] + np.random.normal(scale=g_dot_std)                        
+            
+            # note rigid_body_kinematics already handles the exception dynamics of w=0
+            p = rigid_body_kinematics(p,u_noise,dt)    
+    
+            # update the particles and store the information
+            particles.northings[i] = p[0]
+            particles.eastings[i] = p[1]
+            particles.gamma[i] = p[2]            
+            particles.x_dot[i] = u_noise[0]
+            particles.gamma_dot[i] = u_noise[1]                        
